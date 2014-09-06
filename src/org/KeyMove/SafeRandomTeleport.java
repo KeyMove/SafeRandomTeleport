@@ -9,7 +9,6 @@ package org.KeyMove;
 import java.io.File;
 import static java.lang.System.out;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -23,6 +22,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
+import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.SignChangeEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
@@ -50,7 +50,7 @@ public class SafeRandomTeleport extends JavaPlugin{
             if(!牌子上的字符串[0].equals("§2"+触发字符串))//检测字符串是否符合规格
                 return;
             Player 玩家=事件.getPlayer();
-            玩家.setNoDamageTicks(100);
+            玩家.setNoDamageTicks(100);//设置免伤时间 用于检测是否卡墙里
             Location 点=寻找合适的传送点(牌子.getLocation());
             玩家缓存点.put(玩家, 点);
             玩家.teleport(点);//传送到合适的地点
@@ -72,16 +72,31 @@ public class SafeRandomTeleport extends JavaPlugin{
             事件.getPlayer().sendMessage("§6[随机传送]:§4随机传送已创建");
         }
         @EventHandler
-        public void 检测是否卡墙里(EntityDamageEvent 事件){
-            if(!(事件.getEntity() instanceof Player))
+        public void 检测是否卡墙里(EntityDamageEvent 事件){//实体收到伤害事件
+            if(!(事件.getEntity() instanceof Player))//如果受到伤害的实体不是玩家则退出
                 return;
+            //检测伤害类型 不等于 窒息 岩浆 则退出
             if(事件.getCause()!=EntityDamageEvent.DamageCause.SUFFOCATION&&事件.getCause()!=EntityDamageEvent.DamageCause.LAVA)
                 return;
             Player 玩家=(Player)事件.getEntity();
-            if(玩家.getNoDamageTicks()==0)
+            if(玩家.getNoDamageTicks()==0)//如果免伤时间到期退出
                 return;
-            玩家.teleport(玩家缓存点.get(玩家));
+            玩家.teleport(玩家缓存点.get(玩家));//确定是卡墙里 重置位置
             事件.setCancelled(true);
+        }
+        @EventHandler
+        public void 玩家破坏牌子(BlockBreakEvent 事件){//玩家破坏方块事件
+            if(事件.getBlock().getType()!=Material.WALL_SIGN)//如果破坏的方块不是牌子则退出
+                return;
+            Sign 牌子=(Sign)事件.getBlock().getState();//获取牌子数据
+            if(!牌子.getLine(0).equals("§2"+触发字符串))//如果牌子第一行不匹配则退出
+                return;
+            if(事件.getPlayer().hasPermission("op"))//检测破坏的玩家是否有OP权限
+            {
+                事件.getPlayer().sendMessage("§6[随机传送]:§4随机传送已移除");//对OP发送提示信息
+                return;
+            }
+            事件.setCancelled(true);//没有OP权限取消事件
         }
     }
     
@@ -176,7 +191,7 @@ public class SafeRandomTeleport extends JavaPlugin{
         触发字符串=配置文件.getString("牌子第一行");
         最大范围=配置文件.getInt("默认最大坐标");
         最小范围=配置文件.getInt("默认最小坐标");
-        if(触发字符串.length()==0||(最大范围==0&&最小范围==0))
+        if(触发字符串.length()==0||(最大范围==0&&最小范围==0))//配置文件加载错误 重新创建配置文件
         {
             配置.delete();
             out.print("配置文件错误");
@@ -186,22 +201,19 @@ public class SafeRandomTeleport extends JavaPlugin{
             最大范围=3500;
             最小范围=-3500;
         }
-        out.print(触发字符串);
-        out.print(最大范围);
-        out.print(最小范围);
     }
     @Override
-    public void onEnable() {
-        加载配置文件();
-        getServer().getPluginManager().registerEvents(new 事件监听器(), this);
-        out.print("安全的随机传送插件已经加载");
+    public void onEnable() {//插件加载
+        加载配置文件();//加载配置文件
+        getServer().getPluginManager().registerEvents(new 事件监听器(), this);//注册事件监听器
+        out.print("安全的随机传送插件已经加载");//输出提示信息
     }
 
     @Override
-    public boolean onCommand(CommandSender 命令发送者, Command 命令, String label, String[] 参数列表) {
-        if(!命令发送者.hasPermission("op"))
+    public boolean onCommand(CommandSender 命令发送者, Command 命令, String label, String[] 参数列表) {//重载命令响应函数
+        if(!命令发送者.hasPermission("op"))//检测发送者是否有OP权限
             return false;
-        if(参数列表.length==0)
+        if(参数列表.length==0)//
         {
             命令发送者.sendMessage("§6[随机传送] /sftp Reload - 重载插件");
             命令发送者.sendMessage("§6[随机传送] /sftp info   - 插件参数");
