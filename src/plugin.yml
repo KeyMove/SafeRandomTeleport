@@ -3,3 +3,6 @@
 name: SafeRandomTeleport
 main: org.KeyMove.SafeRandomTeleport
 version: 1.0.0
+
+commands:
+    sftp:

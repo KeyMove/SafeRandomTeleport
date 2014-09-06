@@ -8,23 +8,23 @@ package org.KeyMove;
 
 import java.io.File;
 import static java.lang.System.out;
-import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
-import org.apache.commons.lang.RandomStringUtils;
-import org.bukkit.Bukkit;
+import java.util.Map;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.Sign;
+import org.bukkit.command.Command;
+import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.file.YamlConfiguration;
-import org.bukkit.entity.Minecart;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.SignChangeEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -34,55 +34,54 @@ import org.bukkit.plugin.java.JavaPlugin;
  */
 public class SafeRandomTeleport extends JavaPlugin{
     String 触发字符串="[随机传送]";
-    int 最大范围=1500;
-    int 最小范围=-1500;
+    int 最大范围=3500;
+    int 最小范围=-3500;
+    Map<Player, Location> 玩家缓存点=new HashMap<>();
     YamlConfiguration 配置文件;
-    List<Location> 传送点缓存=new ArrayList<>();
     public class 事件监听器 implements Listener{
         @EventHandler
         public void 玩家右键牌子事件(PlayerInteractEvent 事件){
-            out.print("右键");
             if(事件.getAction()!=Action.RIGHT_CLICK_BLOCK)//如果不是右键点击方块则退出
                 return;
-            out.print("是右键方块");
             if(事件.getClickedBlock().getType()!=Material.WALL_SIGN)//如果被点击的方块不是牌子则退出
                 return;
-            out.print("是牌子");
             Sign 牌子=(Sign)事件.getClickedBlock().getState();//把方块类型转换为牌子
             String 牌子上的字符串[]=牌子.getLines();//获取牌子上的字符串
-            out.print(Arrays.toString(牌子上的字符串));
             if(!牌子上的字符串[0].equals("§2"+触发字符串))//检测字符串是否符合规格
                 return;
             Player 玩家=事件.getPlayer();
-            玩家.teleport(寻找合适的传送点(牌子.getLocation()));
-            /*
-            if(传送点缓存.isEmpty())
-            {
-                玩家.sendMessage("未找到合适的落脚点");
-                return;
-            }
-            玩家.teleport(传送点缓存.get(0));//传送到玩家到已缓存的传送点
-            传送点缓存.remove(0);*/
+            玩家.setNoDamageTicks(100);
+            Location 点=寻找合适的传送点(牌子.getLocation());
+            玩家缓存点.put(玩家, 点);
+            玩家.teleport(点);//传送到合适的地点
         }
         @EventHandler
         public void 检测放置随机传送牌子的玩家是否OP(SignChangeEvent 事件){//检测玩家放置牌子的事件
-            out.print("玩家牌子");
-            out.print(事件.getBlock().toString());
             Block 牌子=事件.getBlock();//获取被放置的牌子
-            out.print(触发字符串);
-            out.print(事件.getLine(0));
             if(!事件.getLine(0).equals(触发字符串))//如果牌子内容跟字符串不同则退出
                 return;
-            out.print("相同");
             if(!事件.getPlayer().isOp())//如果牌子内容一样而且还不是OP
             {
                 事件.setLine(0, "没有权限");
                 事件.setLine(1, "没有权限");
                 事件.setLine(2, "没有权限");
                 事件.setLine(3, "没有权限");
+                return;
             }
             事件.setLine(0,"§2"+事件.getLine(0));
             事件.getPlayer().sendMessage("§6[随机传送]:§4随机传送已创建");
+        }
+        @EventHandler
+        public void 检测是否卡墙里(EntityDamageEvent 事件){
+            if(!(事件.getEntity() instanceof Player))
+                return;
+            if(事件.getCause()!=EntityDamageEvent.DamageCause.SUFFOCATION&&事件.getCause()!=EntityDamageEvent.DamageCause.LAVA)
+                return;
+            Player 玩家=(Player)事件.getEntity();
+            if(玩家.getNoDamageTicks()==0)
+                return;
+            玩家.teleport(玩家缓存点.get(玩家));
+            事件.setCancelled(true);
         }
     }
     
@@ -103,6 +102,7 @@ public class SafeRandomTeleport extends JavaPlugin{
                     {
                         if(air>=2&&方块.getType()!=Material.LAVA)
                         {
+                            目标点.setY(目标点.getY()+1.5);
                             return 目标点;
                         }
                         else
@@ -129,6 +129,7 @@ public class SafeRandomTeleport extends JavaPlugin{
                     {
                         if(air>=2&&方块.getType()!=Material.LAVA)
                         {
+                            目标点.setY(目标点.getY()+1.5);
                             return 目标点;
                         }
                         else
@@ -155,10 +156,8 @@ public class SafeRandomTeleport extends JavaPlugin{
         }
     
     public int getRandomInt(int a, int b) {  
-        if (a > b || a < 0)  
+        if (a > b)  
             return -1;  
-        // 下面两种形式等价  
-        // return a + (int) (new Random().nextDouble() * (b - a + 1));  
         return a + (int) (Math.random() * (b - a + 1));  
     }
     
@@ -174,17 +173,50 @@ public class SafeRandomTeleport extends JavaPlugin{
             配置=new File(getDataFolder(),"config.yml");
         }
         配置文件=YamlConfiguration.loadConfiguration(配置);
-        List<World> l=getServer().getWorlds();
-        out.print(l);
         触发字符串=配置文件.getString("牌子第一行");
-        out.print("初始化字符串"+触发字符串);
+        最大范围=配置文件.getInt("默认最大坐标");
+        最小范围=配置文件.getInt("默认最小坐标");
+        if(触发字符串.length()==0||(最大范围==0&&最小范围==0))
+        {
+            配置.delete();
+            out.print("配置文件错误");
+            this.saveDefaultConfig();
+            配置文件=YamlConfiguration.loadConfiguration(new File(getDataFolder(),"config.yml"));
+            触发字符串="[随机传送]";
+            最大范围=3500;
+            最小范围=-3500;
+        }
+        out.print(触发字符串);
+        out.print(最大范围);
+        out.print(最小范围);
     }
-    
     @Override
     public void onEnable() {
         加载配置文件();
         getServer().getPluginManager().registerEvents(new 事件监听器(), this);
         out.print("安全的随机传送插件已经加载");
+    }
+
+    @Override
+    public boolean onCommand(CommandSender 命令发送者, Command 命令, String label, String[] 参数列表) {
+        if(!命令发送者.hasPermission("op"))
+            return false;
+        if(参数列表.length==0)
+        {
+            命令发送者.sendMessage("§6[随机传送] /sftp Reload - 重载插件");
+            命令发送者.sendMessage("§6[随机传送] /sftp info   - 插件参数");
+            return true;
+        }
+        switch(参数列表[0]){
+            case "reload":
+                加载配置文件();
+                命令发送者.sendMessage("§6[随机传送] 重载完毕");
+                break;
+            case "info":
+                命令发送者.sendMessage("§6[随机传送] 检测名称:"+触发字符串+"最大坐标:"+最大范围+"最小坐标:"+最小范围);
+                break;
+        }
+        return false;
     }
     
 }
